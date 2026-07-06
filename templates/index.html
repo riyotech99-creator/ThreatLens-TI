@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="ThreatLens TI — Multi-source threat intelligence aggregation platform. Query IPs, domains, and file hashes across VirusTotal, AbuseIPDB, IPInfo, and OTX AlienVault.">
+    <title>ThreatLens TI — Threat Intelligence Aggregator</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Top Header -->
+        <header class="top-header">
+            <div class="brand">
+                <i class="fa-solid fa-crosshairs brand-icon"></i>
+                <div>
+                    <h1>Threat<span class="accent">Lens</span> <span class="tag">TI</span></h1>
+                    <span class="brand-subtitle">Multi-Source Threat Intelligence Aggregator</span>
+                </div>
+            </div>
+
+            <!-- Header Search Bar (Visible during results view) -->
+            <div class="header-search-container" id="header-search-container" style="display: none;">
+                <form class="header-search-form" id="header-search-form">
+                    <div class="header-search-input-wrapper">
+                        <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                        <input type="text" id="header-search-input" placeholder="Search IP, Domain, Hash, Email..." autocomplete="off" required>
+                        <span class="ioc-type-badge header-ioc-badge" id="header-ioc-badge">TYPE</span>
+                    </div>
+                    <button type="submit" class="btn btn-header-scan" id="btn-header-scan" title="Scan IOC">
+                        <i class="fa-solid fa-satellite-dish"></i>
+                    </button>
+                </form>
+            </div>
+
+            <div class="header-status">
+                <div class="api-status-row" id="api-status-row">
+                    <span class="api-dot" id="dot-vt" title="VirusTotal"><i class="fa-solid fa-circle"></i> VT</span>
+                    <span class="api-dot" id="dot-abuse" title="AbuseIPDB"><i class="fa-solid fa-circle"></i> Abuse</span>
+                    <span class="api-dot" id="dot-ipinfo" title="IPInfo"><i class="fa-solid fa-circle"></i> IPInfo</span>
+                    <span class="api-dot" id="dot-otx" title="OTX"><i class="fa-solid fa-circle"></i> OTX</span>
+                    <span class="api-dot" id="dot-emailrep" title="EmailRep"><i class="fa-solid fa-circle"></i> ERep</span>
+                    <span class="api-dot" id="dot-hunterio" title="Hunter.io"><i class="fa-solid fa-circle"></i> Hunter</span>
+                    <span class="api-dot" id="dot-urlscan" title="URLScan.io"><i class="fa-solid fa-circle"></i> URLScan</span>
+                    <span class="api-dot" id="dot-domain_checker" title="Domain Checker"><i class="fa-solid fa-circle"></i> WHOIS</span>
+                </div>
+                <div class="clock-badge" id="live-clock">
+                    <i class="fa-regular fa-clock"></i> <span>--:--:-- UTC</span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main Body -->
+        <div class="main-body">
+            <!-- Sidebar: Search History -->
+            <aside class="history-sidebar" id="history-sidebar">
+                <div class="sidebar-header">
+                    <h3><i class="fa-solid fa-clock-rotate-left"></i> Recent Lookups</h3>
+                    <button class="btn-icon" id="btn-clear-history" title="Clear History"><i class="fa-solid fa-trash-can"></i></button>
+                </div>
+                <div class="history-list" id="history-list">
+                    <p class="empty-state">No searches yet.</p>
+                </div>
+            </aside>
+
+            <!-- Main Content -->
+            <main class="main-content">
+                <!-- Search Hero -->
+                <section class="search-hero" id="search-hero">
+                    <div class="hero-inner">
+                        <div class="hero-tagline">
+                            <i class="fa-solid fa-shield-virus hero-icon"></i>
+                            <h2>Investigate Any Indicator of Compromise</h2>
+                            <p>Enter an <strong>IP address</strong>, <strong>domain</strong>, <strong>file hash</strong> (MD5/SHA1/SHA256), or <strong>email address</strong> to query VirusTotal, AbuseIPDB, IPInfo, OTX AlienVault, EmailRep, Hunter.io, and HIBP simultaneously.</p>
+                        </div>
+                        <form class="search-form" id="search-form">
+                            <div class="search-input-wrapper">
+                                <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                                <input type="text" id="search-input" placeholder="e.g. 185.220.101.4, evil-domain.com, e99a18c428cb38d5f..." autocomplete="off" required>
+                                <span class="ioc-type-badge" id="ioc-type-badge">TYPE</span>
+                            </div>
+                            <button type="submit" class="btn btn-scan" id="btn-scan">
+                                <i class="fa-solid fa-satellite-dish"></i> Scan IOC
+                            </button>
+                        </form>
+                        <div class="quick-samples">
+                            <span>Try:</span>
+                            <button type="button" class="sample-btn" data-query="8.8.8.8">8.8.8.8</button>
+                            <button type="button" class="sample-btn" data-query="185.220.101.4">185.220.101.4</button>
+                            <button type="button" class="sample-btn" data-query="google.com">google.com</button>
+                            <button type="button" class="sample-btn" data-query="e99a18c428cb38d5f260853678922e03">e99a18c4... (MD5)</button>
+                            <button type="button" class="sample-btn" data-query="test@example.com">test@example.com</button>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Loading State -->
+                <section class="loading-state" id="loading-state" style="display:none;">
+                    <div class="loader-container">
+                        <div class="scan-ring"></div>
+                         <p class="loader-text">Scanning across 8 threat intelligence sources...</p>
+                         <div class="api-scan-progress">
+                             <span class="scan-item" id="scan-vt"><i class="fa-solid fa-spinner fa-spin"></i> VirusTotal</span>
+                             <span class="scan-item" id="scan-abuse"><i class="fa-solid fa-spinner fa-spin"></i> AbuseIPDB</span>
+                             <span class="scan-item" id="scan-ipinfo"><i class="fa-solid fa-spinner fa-spin"></i> IPInfo</span>
+                             <span class="scan-item" id="scan-otx"><i class="fa-solid fa-spinner fa-spin"></i> OTX</span>
+                             <span class="scan-item" id="scan-emailrep"><i class="fa-solid fa-spinner fa-spin"></i> EmailRep</span>
+                             <span class="scan-item" id="scan-hunterio"><i class="fa-solid fa-spinner fa-spin"></i> Hunter.io</span>
+                             <span class="scan-item" id="scan-urlscan"><i class="fa-solid fa-spinner fa-spin"></i> URLScan</span>
+                             <span class="scan-item" id="scan-domain_checker"><i class="fa-solid fa-spinner fa-spin"></i> WHOIS</span>
+                         </div>
+                    </div>
+                </section>
+
+                <!-- Error State -->
+                <section class="error-state" id="error-state" style="display:none;">
+                    <div class="error-box">
+                        <i class="fa-solid fa-triangle-exclamation"></i>
+                        <p id="error-message">An error occurred.</p>
+                        <button class="btn btn-outline" id="btn-dismiss-error">Dismiss</button>
+                    </div>
+                </section>
+
+                <!-- Results Dashboard -->
+                <section class="results-dashboard" id="results-dashboard" style="display:none;">
+                    <!-- Results Header -->
+                    <div class="results-header">
+                        <div class="result-ioc-info">
+                            <span class="result-type-badge" id="result-type-badge">IP</span>
+                            <h2 id="result-query-display">185.220.101.4</h2>
+                            <span class="result-timestamp" id="result-timestamp">Scanned at: 2026-07-07 03:00:00 UTC</span>
+                        </div>
+                        <button class="btn btn-outline" id="btn-new-search">
+                            <i class="fa-solid fa-arrow-rotate-left"></i> New Search
+                        </button>
+                    </div>
+
+                    <!-- Unified Score Banner -->
+                    <div class="score-banner" id="score-banner">
+                        <div class="score-gauge-container">
+                            <div class="score-gauge" id="score-gauge">
+                                <div class="score-gauge-inner">
+                                    <span class="score-number" id="score-number">0</span>
+                                    <span class="score-max">/100</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="score-info">
+                            <div class="score-label-big" id="score-level">CLEAN</div>
+                            <p class="score-desc" id="score-description">No threat indicators found across configured intelligence sources.</p>
+                            <div class="source-score-pills" id="source-score-pills">
+                                <!-- Dynamic pills -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Source Cards Grid -->
+                    <div class="source-cards-grid" id="source-cards-grid">
+                        <!-- VirusTotal Card -->
+                        <div class="source-card vt-card" id="card-virustotal">
+                            <div class="source-card-header">
+                                <div class="source-logo vt-logo"><i class="fa-solid fa-virus"></i></div>
+                                <h3>VirusTotal</h3>
+                                <span class="source-status" id="vt-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="vt-body">
+                                <div class="source-skeleton">
+                                    <p class="no-data-message">Awaiting results...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- AbuseIPDB Card -->
+                        <div class="source-card abuse-card" id="card-abuseipdb">
+                            <div class="source-card-header">
+                                <div class="source-logo abuse-logo"><i class="fa-solid fa-ban"></i></div>
+                                <h3>AbuseIPDB</h3>
+                                <span class="source-status" id="abuse-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="abuse-body">
+                                <div class="source-skeleton">
+                                    <p class="no-data-message">Awaiting results...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- IPInfo Card -->
+                        <div class="source-card ipinfo-card" id="card-ipinfo">
+                            <div class="source-card-header">
+                                <div class="source-logo ipinfo-logo"><i class="fa-solid fa-globe"></i></div>
+                                <h3>IPInfo</h3>
+                                <span class="source-status" id="ipinfo-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="ipinfo-body">
+                                <div class="source-skeleton">
+                                    <p class="no-data-message">Awaiting results...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- OTX AlienVault Card -->
+                        <div class="source-card otx-card" id="card-otx">
+                            <div class="source-card-header">
+                                <div class="source-logo otx-logo"><i class="fa-solid fa-satellite-dish"></i></div>
+                                <h3>OTX AlienVault</h3>
+                                <span class="source-status" id="otx-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="otx-body">
+                                <div class="source-skeleton">
+                                    <p class="no-data-message">Awaiting results...</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- EmailRep Card -->
+                        <div class="source-card emailrep-card" id="card-emailrep">
+                            <div class="source-card-header">
+                                <div class="source-logo emailrep-logo"><i class="fa-solid fa-envelope-circle-check"></i></div>
+                                <h3>EmailRep.io</h3>
+                                <span class="source-status" id="emailrep-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="emailrep-body">
+                                <div class="source-skeleton"><p class="no-data-message">Awaiting results...</p></div>
+                            </div>
+                        </div>
+
+                        <!-- Hunter.io Card -->
+                        <div class="source-card hunter-card" id="card-hunterio">
+                            <div class="source-card-header">
+                                <div class="source-logo hunter-logo"><i class="fa-solid fa-magnifying-glass-arrow-right"></i></div>
+                                <h3>Hunter.io</h3>
+                                <span class="source-status" id="hunterio-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="hunterio-body">
+                                <div class="source-skeleton"><p class="no-data-message">Awaiting results...</p></div>
+                            </div>
+                        </div>
+
+
+                        <!-- URLScan.io Card -->
+                        <div class="source-card urlscan-card" id="card-urlscan">
+                            <div class="source-card-header">
+                                <div class="source-logo urlscan-logo"><i class="fa-solid fa-camera"></i></div>
+                                <h3>URLScan.io</h3>
+                                <span class="source-status" id="urlscan-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="urlscan-body">
+                                <div class="source-skeleton"><p class="no-data-message">Awaiting results...</p></div>
+                            </div>
+                        </div>
+
+                        <!-- Domain Checker Card -->
+                        <div class="source-card domain-checker-card" id="card-domain_checker">
+                            <div class="source-card-header">
+                                <div class="source-logo domain-checker-logo"><i class="fa-solid fa-calendar-days"></i></div>
+                                <h3>Domain Checker (WHOIS)</h3>
+                                <span class="source-status" id="domain_checker-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="domain_checker-body">
+                                <div class="source-skeleton"><p class="no-data-message">Awaiting results...</p></div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Containment Scripts Section -->
+                    <div class="containment-section" id="containment-section">
+                        <h3><i class="fa-solid fa-shield-halved"></i> Containment & Blocking Scripts</h3>
+                        <p class="section-desc">Auto-generated firewall and EDR containment rules for this indicator:</p>
+                        <div class="containment-tabs" id="containment-tabs">
+                            <!-- Dynamic script tabs -->
+                        </div>
+                        <div class="containment-code-box">
+                            <div class="code-terminal">
+                                <div class="terminal-bar">
+                                    <span class="t-dot red"></span>
+                                    <span class="t-dot yellow"></span>
+                                    <span class="t-dot green"></span>
+                                    <span class="t-name" id="containment-tab-name">iptables</span>
+                                    <button class="btn-copy" id="btn-copy-script" title="Copy to clipboard"><i class="fa-regular fa-copy"></i></button>
+                                </div>
+                                <pre class="terminal-code"><code id="containment-code">Select a containment script above.</code></pre>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </main>
+        </div>
+
+        <footer class="app-footer">
+            <p>&copy; 2026 ThreatLens TI — Built for SOC Analyst Portfolios by <strong>Riyotech</strong></p>
+        </footer>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
