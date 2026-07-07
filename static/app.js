@@ -428,18 +428,20 @@ function renderSourceCard(r) {
         }
         
         if (d.comments && d.comments.length > 0) {
-            html += `</div><div class="abuse-comments-section"><p class="comments-header"><i class="fa-solid fa-comments"></i> Recent Community Reports</p><ul class="abuse-comments-list">`;
+            html += `</div><div class="abuse-comments-section">`;
+            html += `<div class="comments-header-container">`;
+            html += `<p class="comments-header"><i class="fa-solid fa-comments"></i> Recent Community Reports</p>`;
+            if (d.comments.length > 1) {
+                html += `<button class="btn-see-all-comments" data-expanded="false">See all (${d.comments.length})</button>`;
+            }
+            html += `</div><ul class="abuse-comments-list">`;
             d.comments.forEach((c, idx) => {
                 const truncated = c.length > 150 ? c.substring(0, 147) + '...' : c;
                 const style = idx === 0 ? '' : 'style="display:none;"';
                 const cls = idx === 0 ? 'abuse-comment-item' : 'abuse-comment-item more-comment';
                 html += `<li class="${cls}" ${style}>${escapeHtml(truncated)}</li>`;
             });
-            html += `</ul>`;
-            if (d.comments.length > 1) {
-                html += `<button class="btn-see-all-comments" data-expanded="false">See all (${d.comments.length})</button>`;
-            }
-            html += `</div>`;
+            html += `</ul></div>`;
         } else {
             html += `</div>`;
         }
