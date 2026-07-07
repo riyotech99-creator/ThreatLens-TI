@@ -33,6 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupNewSearchBtn();
     setupErrorDismiss();
     setupKeyboardShortcuts();
+    setupBulkSearch();
 });
 
 // --- Keyboard Shortcuts ---
@@ -190,9 +191,10 @@ function showView(view) {
     const loading = document.getElementById('loading-state');
     const error = document.getElementById('error-state');
     const results = document.getElementById('results-dashboard');
+    const bulkResults = document.getElementById('bulk-results-dashboard');
     const headerSearch = document.getElementById('header-search-container');
     
-    [hero, loading, error, results].forEach(el => { if(el) el.style.display = 'none'; });
+    [hero, loading, error, results, bulkResults].forEach(el => { if(el) el.style.display = 'none'; });
 
     if (view === 'hero') {
         if (hero) hero.style.display = 'flex';
@@ -200,7 +202,6 @@ function showView(view) {
     }
     else if (view === 'loading') {
         if (loading) loading.style.display = 'flex';
-        // Keep header search visible during loading if we are performing a lookup from results page
     }
     else if (view === 'error') {
         if (error) error.style.display = 'block';
@@ -222,6 +223,10 @@ function showView(view) {
                 }
             }
         }
+    }
+    else if (view === 'bulk-results') {
+        if (bulkResults) bulkResults.style.display = 'block';
+        if (headerSearch) headerSearch.style.display = 'none';
     }
 }
 
@@ -289,8 +294,8 @@ function renderResults(data) {
     // Source score pills
     const pillsEl = document.getElementById('source-score-pills');
     pillsEl.innerHTML = '';
-    const sourceMap = { virustotal: 'vt', abuseipdb: 'abuse', ipinfo: 'ipinfo', otx: 'otx', emailrep: 'emailrep', hunterio: 'hunterio', urlscan: 'urlscan', domain_checker: 'domain_checker' };
-    const nameMap = { virustotal: 'VirusTotal', abuseipdb: 'AbuseIPDB', ipinfo: 'IPInfo', otx: 'OTX', emailrep: 'EmailRep', hunterio: 'Hunter.io', urlscan: 'URLScan', domain_checker: 'Domain Checker' };
+    const sourceMap = { virustotal: 'vt', abuseipdb: 'abuse', ipinfo: 'ipinfo', otx: 'otx', emailrep: 'emailrep', hunterio: 'hunterio', urlscan: 'urlscan', domain_checker: 'domain_checker', dns_history: 'dns_history' };
+    const nameMap = { virustotal: 'VirusTotal', abuseipdb: 'AbuseIPDB', ipinfo: 'IPInfo', otx: 'OTX', emailrep: 'EmailRep', hunterio: 'Hunter.io', urlscan: 'URLScan', domain_checker: 'Domain Checker', dns_history: 'DNS History' };
     data.results.forEach(r => {
         const cls = sourceMap[r.source] || '';
         const name = nameMap[r.source] || r.source;
@@ -352,8 +357,8 @@ function renderGauge(score, level) {
 }
 
 function renderSourceCard(r) {
-    const bodyMap = { virustotal: 'vt-body', abuseipdb: 'abuse-body', ipinfo: 'ipinfo-body', otx: 'otx-body', emailrep: 'emailrep-body', hunterio: 'hunterio-body', urlscan: 'urlscan-body', domain_checker: 'domain_checker-body' };
-    const statusMap = { virustotal: 'vt-status', abuseipdb: 'abuse-status', ipinfo: 'ipinfo-status', otx: 'otx-status', emailrep: 'emailrep-status', hunterio: 'hunterio-status', urlscan: 'urlscan-status', domain_checker: 'domain_checker-status' };
+    const bodyMap = { virustotal: 'vt-body', abuseipdb: 'abuse-body', ipinfo: 'ipinfo-body', otx: 'otx-body', emailrep: 'emailrep-body', hunterio: 'hunterio-body', urlscan: 'urlscan-body', domain_checker: 'domain_checker-body', dns_history: 'dns_history-body' };
+    const statusMap = { virustotal: 'vt-status', abuseipdb: 'abuse-status', ipinfo: 'ipinfo-status', otx: 'otx-status', emailrep: 'emailrep-status', hunterio: 'hunterio-status', urlscan: 'urlscan-status', domain_checker: 'domain_checker-status', dns_history: 'dns_history-status' };
     const bodyEl = document.getElementById(bodyMap[r.source]);
     const statusEl = document.getElementById(statusMap[r.source]);
     if (!bodyEl || !statusEl) return;
@@ -609,6 +614,98 @@ function renderSourceCard(r) {
         html += `</div>`;
         bodyEl.innerHTML = html;
     }
+    else if (r.source === 'dns_history') {
+        const d = r.data;
+        let html = `
+            <div class="dns-subtabs">
+                <button type="button" class="dns-subtab active" id="dns-tab-active">Active DNS (${d.active ? d.active.length : 0})</button>
+                <button type="button" class="dns-subtab" id="dns-tab-passive">Passive DNS (${d.passive ? d.passive.length : 0})</button>
+            </div>
+            
+            <div class="dns-tab-content" id="dns-content-active">
+        `;
+        
+        if (d.active && d.active.length > 0) {
+            html += `
+                <table class="dns-table">
+                    <thead>
+                        <tr>
+                            <th>Type</th>
+                            <th>Value</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            d.active.forEach(record => {
+                html += `
+                    <tr>
+                        <td class="mono" style="color: var(--neon-cyan); font-weight:700;">${escapeHtml(record.type)}</td>
+                        <td class="mono">${escapeHtml(record.value)}</td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table>`;
+        } else {
+            html += `<p class="no-data-message" style="padding: 10px 0;">No active DNS records found.</p>`;
+        }
+        
+        html += `
+            </div>
+            <div class="dns-tab-content" id="dns-content-passive" style="display:none;">
+        `;
+        
+        if (d.passive && d.passive.length > 0) {
+            html += `
+                <table class="dns-table">
+                    <thead>
+                        <tr>
+                            <th>Resolved IP</th>
+                            <th>Type</th>
+                            <th>First Seen</th>
+                            <th>Last Seen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            d.passive.forEach(record => {
+                html += `
+                    <tr>
+                        <td class="mono" style="color: var(--text-light);">${escapeHtml(record.answer)}</td>
+                        <td class="mono" style="color: var(--text-muted);">${escapeHtml(record.rrtype)}</td>
+                        <td style="font-size:0.7rem;">${escapeHtml(record.first_seen)}</td>
+                        <td style="font-size:0.7rem;">${escapeHtml(record.last_seen)}</td>
+                    </tr>
+                `;
+            });
+            html += `</tbody></table>`;
+        } else {
+            html += `<p class="no-data-message" style="padding: 10px 0;">No passive DNS history found.</p>`;
+        }
+        
+        html += `</div>`;
+        bodyEl.innerHTML = html;
+        
+        // Add tab toggle events
+        const tabActive = bodyEl.querySelector('#dns-tab-active');
+        const tabPassive = bodyEl.querySelector('#dns-tab-passive');
+        const contentActive = bodyEl.querySelector('#dns-content-active');
+        const contentPassive = bodyEl.querySelector('#dns-content-passive');
+        
+        if (tabActive && tabPassive && contentActive && contentPassive) {
+            tabActive.addEventListener('click', () => {
+                tabActive.classList.add('active');
+                tabPassive.classList.remove('active');
+                contentActive.style.display = 'block';
+                contentPassive.style.display = 'none';
+            });
+            tabPassive.addEventListener('click', () => {
+                tabPassive.classList.add('active');
+                tabActive.classList.remove('active');
+                contentActive.style.display = 'none';
+                contentPassive.style.display = 'block';
+            });
+        }
+    }
 }
 
 function row(key, value) {
@@ -705,3 +802,172 @@ function renderHistory() {
         listEl.appendChild(item);
     });
 }
+
+// --- Bulk Search ---
+function setupBulkSearch() {
+    const tabSingle = document.getElementById('tab-single');
+    const tabBulk = document.getElementById('tab-bulk');
+    const singleForm = document.getElementById('search-form');
+    const bulkForm = document.getElementById('bulk-search-form');
+    const samplesWrapper = document.getElementById('quick-samples-wrapper');
+    const bulkInput = document.getElementById('bulk-input');
+    const bulkResultsBody = document.getElementById('bulk-results-body');
+    const btnBulkNewSearch = document.getElementById('btn-bulk-new-search');
+
+    if (!tabSingle || !tabBulk) return;
+
+    // Tab Switching
+    tabSingle.addEventListener('click', () => {
+        tabSingle.classList.add('active');
+        tabBulk.classList.remove('active');
+        singleForm.style.display = 'flex';
+        bulkForm.style.display = 'none';
+        if (samplesWrapper) samplesWrapper.style.display = 'flex';
+    });
+
+    tabBulk.addEventListener('click', () => {
+        tabBulk.classList.add('active');
+        tabSingle.classList.remove('active');
+        bulkForm.style.display = 'flex';
+        singleForm.style.display = 'none';
+        if (samplesWrapper) samplesWrapper.style.display = 'none';
+    });
+
+    // Bulk Form Submit
+    bulkForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const rawInput = bulkInput.value;
+        const queries = rawInput.split('\n')
+                                .map(q => q.trim())
+                                .filter(q => q.length > 0)
+                                .slice(0, 15);
+
+        if (queries.length === 0) {
+            showToast('Please enter at least one valid query', 'warning');
+            return;
+        }
+
+        // Show loading and clear progress list
+        const loaderText = document.querySelector('.loader-text');
+        const apiScanProgress = document.querySelector('.api-scan-progress');
+        if (loaderText) loaderText.textContent = `Processing bulk lookup for ${queries.length} indicators (this may take a moment)...`;
+        if (apiScanProgress) apiScanProgress.style.display = 'none';
+
+        showView('loading');
+
+        try {
+            const resp = await fetch('/api/lookup/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ queries })
+            });
+
+            const data = await resp.json();
+
+            // Restore loader text & visibility for single scans
+            if (loaderText) loaderText.textContent = 'Scanning across 9 threat intelligence sources...';
+            if (apiScanProgress) apiScanProgress.style.display = 'flex';
+
+            if (!resp.ok) {
+                document.getElementById('error-message').textContent = data.error || 'Bulk lookup failed.';
+                showView('error');
+                return;
+            }
+
+            renderBulkResults(data);
+            showView('bulk-results');
+            showToast(`Bulk scan complete. Evaluated ${data.count} indicators.`, 'success');
+        } catch (err) {
+            if (loaderText) loaderText.textContent = 'Scanning across 9 threat intelligence sources...';
+            if (apiScanProgress) apiScanProgress.style.display = 'flex';
+            document.getElementById('error-message').textContent = `Network error: ${err.message}`;
+            showView('error');
+        }
+    });
+
+    // Row Actions: Click Analyze to Pivot
+    if (bulkResultsBody) {
+        bulkResultsBody.addEventListener('click', (e) => {
+            const btn = e.target.closest('.btn-action');
+            if (!btn) return;
+            const query = btn.dataset.query;
+            if (!query) return;
+
+            // Switch UI back to Single Scan, populate, and scan
+            tabSingle.click();
+            const searchInput = document.getElementById('search-input');
+            if (searchInput) {
+                searchInput.value = query;
+                // update badge
+                const badge = document.getElementById('ioc-type-badge');
+                if (badge) {
+                    const t = detectType(query);
+                    badge.textContent = t ? t.toUpperCase() : 'TYPE';
+                    badge.className = `ioc-type-badge ${t}`;
+                }
+            }
+            runLookup(query);
+        });
+    }
+
+    if (btnBulkNewSearch) {
+        btnBulkNewSearch.addEventListener('click', () => {
+            showView('hero');
+        });
+    }
+}
+
+function renderBulkResults(data) {
+    const body = document.getElementById('bulk-results-body');
+    const timestampEl = document.getElementById('bulk-result-timestamp');
+    if (!body) return;
+
+    if (timestampEl) timestampEl.textContent = `Scanned at: ${data.timestamp}`;
+    body.innerHTML = '';
+
+    data.results.forEach((r, idx) => {
+        const tr = document.createElement('tr');
+        
+        let scorePill = '—';
+        let threatBadge = 'UNKNOWN';
+        let threatClass = 'na';
+        
+        if (r.success) {
+            scorePill = `<span class="score-pill-mini" style="font-weight:700; color:${getScoreColor(r.unified_score)};">${r.unified_score}/100</span>`;
+            threatBadge = r.threat_level;
+            threatClass = r.threat_level.toLowerCase();
+        } else {
+            threatBadge = 'ERROR';
+            threatClass = 'error';
+        }
+
+        const typeClass = r.ioc_type ? r.ioc_type : 'unknown';
+        const typeBadge = `<span class="h-type-badge ${typeClass}">${r.ioc_type.toUpperCase()}</span>`;
+
+        tr.innerHTML = `
+            <td style="color: var(--text-muted); font-weight:700;">${idx + 1}</td>
+            <td class="mono" style="font-weight:600; color:var(--text-light); max-width:250px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">
+                ${escapeHtml(r.query)}
+                <button class="btn-copy-mini" onclick="navigator.clipboard.writeText('${r.query}'); showToast('Copied indicator', 'success');" style="background:transparent; border:none; color:var(--text-muted); cursor:pointer; margin-left:6px;"><i class="fa-regular fa-copy"></i></button>
+            </td>
+            <td>${typeBadge}</td>
+            <td>${scorePill}</td>
+            <td><span class="source-status ${threatClass}" style="padding: 2px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 700;">${threatBadge}</span></td>
+            <td style="max-width:300px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color: var(--text-muted); font-size: 0.8rem;">${escapeHtml(r.summary || r.error || 'N/A')}</td>
+            <td style="text-align: right;">
+                <button class="btn btn-outline btn-action" data-query="${escapeHtml(r.query)}">
+                    <i class="fa-solid fa-magnifying-glass"></i> Analyze
+                </button>
+            </td>
+        `;
+        body.appendChild(tr);
+    });
+}
+
+function getScoreColor(score) {
+    if (score >= 75) return 'var(--neon-red)';
+    if (score >= 50) return 'var(--neon-orange)';
+    if (score >= 25) return '#fbbf24';
+    return 'var(--neon-green)';
+}
+

@@ -696,6 +696,68 @@ def query_domain_checker(ioc, ioc_type):
         return {'source': 'domain_checker', 'success': False, 'error': str(e)[:200], 'data': None}
 
 
+# --- DNS & Passive DNS History ---
+def query_dns_history(ioc, ioc_type):
+    """Query Active DNS (via HackerTarget API) and Passive DNS (via Mnemonic API). Only for domains."""
+    if ioc_type != 'domain':
+        return {'source': 'dns_history', 'success': True, 'error': None, 'data': {'not_applicable': True}}
+
+    active_records = []
+    passive_records = []
+
+    # 1. Fetch Active DNS (HackerTarget)
+    try:
+        resp = requests.get(f'https://api.hackertarget.com/dnslookup/?q={ioc}', timeout=REQUEST_TIMEOUT)
+        if resp.status_code == 200 and resp.text:
+            lines = resp.text.split('\n')
+            for line in lines:
+                if ' : ' in line:
+                    parts = line.split(' : ', 1)
+                    dtype = parts[0].strip()
+                    dvalue = parts[1].strip()
+                    active_records.append({
+                        'type': dtype,
+                        'value': dvalue
+                    })
+    except Exception as e:
+        logger.warning(f"Error querying HackerTarget Active DNS for {ioc}: {e}")
+
+    # 2. Fetch Passive DNS (Mnemonic)
+    try:
+        resp = requests.get(f'https://api.mnemonic.no/pdns/v3/{ioc}?limit=15', timeout=REQUEST_TIMEOUT)
+        if resp.status_code == 200:
+            raw_data = resp.json().get('data', [])
+            for item in raw_data:
+                first_seen = item.get('firstSeenTimestamp')
+                last_seen = item.get('lastSeenTimestamp')
+                
+                # Convert epoch timestamp to readable UTC date
+                first_seen_str = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(first_seen / 1000.0)) if first_seen else 'N/A'
+                last_seen_str = time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime(last_seen / 1000.0)) if last_seen else 'N/A'
+                
+                passive_records.append({
+                    'answer': item.get('answer', 'Unknown'),
+                    'rrtype': item.get('rrtype', 'A').upper(),
+                    'first_seen': first_seen_str,
+                    'last_seen': last_seen_str,
+                    'count': item.get('times', 1)
+                })
+    except Exception as e:
+        logger.warning(f"Error querying Mnemonic Passive DNS for {ioc}: {e}")
+
+    return {
+        'source': 'dns_history',
+        'success': True,
+        'error': None,
+        'data': {
+            'found': True,
+            'active': active_records,
+            'passive': passive_records,
+            'score': 0
+        }
+    }
+
+
 # --- Unified Threat Scoring ---
 def calculate_unified_score(results):
     """
@@ -710,7 +772,8 @@ def calculate_unified_score(results):
         'emailrep': 0.35,
         'hunterio': 0.15,
         'urlscan': 0.20,
-        'domain_checker': 0.15
+        'domain_checker': 0.15,
+        'dns_history': 0.0
     }
 
     total_weight = 0
@@ -787,37 +850,29 @@ def index():
     return render_template('index.html')
 
 
-@app.route('/api/lookup', methods=['POST'])
-@limiter.limit('15 per minute')
-def lookup():
-    """Main IOC lookup endpoint. Queries all sources in parallel."""
-    body = request.get_json()
-    if not body or not body.get('query'):
-        return jsonify({'error': 'Missing query parameter'}), 400
-
-    query = body['query'].strip()
+def perform_lookup_core(query):
+    """Core logic to perform lookup on a single IOC, with caching support."""
+    query = query.strip()
     if not query:
-        return jsonify({'error': 'Empty query'}), 400
+        return {'error': 'Empty query'}
 
     if len(query) > MAX_QUERY_LENGTH:
-        return jsonify({'error': f'Query too long (max {MAX_QUERY_LENGTH} characters)'}), 400
+        return {'error': f'Query too long (max {MAX_QUERY_LENGTH} characters)'}
 
     # Sanitize: only allow alphanumeric, dots, colons, hyphens, @, underscores
     if not re.match(r'^[a-zA-Z0-9.:@_\-]+$', query):
-        return jsonify({'error': 'Query contains invalid characters'}), 400
+        return {'error': 'Query contains invalid characters'}
 
     ioc_type = detect_ioc_type(query)
     if ioc_type == 'unknown':
-        return jsonify({'error': f'Could not detect IOC type for: {query}. Please enter a valid IP address (IPv4/IPv6), domain, file hash (MD5/SHA1/SHA256), or email address.'}), 400
-
-    logger.info(f'Lookup: {ioc_type} — {query}')
+        return {'error': f'Could not detect IOC type for: {query}'}
 
     # Check cache first
     cache_key = f'lookup_{hashlib.md5(query.encode()).hexdigest()}'
     cached = cache.get(cache_key)
     if cached:
         cached['from_cache'] = True
-        return jsonify(cached)
+        return cached
 
     # Query only applicable APIs in parallel
     supported_types = {
@@ -828,7 +883,8 @@ def lookup():
         'emailrep': ['email'],
         'hunterio': ['email'],
         'urlscan': ['ip', 'domain'],
-        'domain_checker': ['domain']
+        'domain_checker': ['domain'],
+        'dns_history': ['domain']
     }
 
     results = []
@@ -842,6 +898,7 @@ def lookup():
         ('hunterio', query_hunterio),
         ('urlscan', query_urlscan),
         ('domain_checker', query_domain_checker),
+        ('dns_history', query_dns_history),
     ]
 
     for name, func in query_functions:
@@ -894,7 +951,8 @@ def lookup():
         'hunterio': bool(HUNTER_API_KEY),
         'urlscan': bool(URLSCAN_API_KEY),
         'domain_checker': True,  # free RDAP, no key
-        'emailrep': True  # No key needed
+        'emailrep': True,  # No key needed
+        'dns_history': True
     }
 
     response_data = {
@@ -912,7 +970,116 @@ def lookup():
     # Cache for 5 minutes
     cache.set(cache_key, response_data, timeout=300)
 
-    return jsonify(response_data)
+    return response_data
+
+
+def get_ioc_summary(ioc_type, results):
+    """Extract a quick summary string (ISP, Owner, Registrar, etc.) for bulk results."""
+    for r in results:
+        if not r.get('success') or not r.get('data'):
+            continue
+        d = r['data']
+        if d.get('not_applicable'):
+            continue
+        if ioc_type == 'ip':
+            if r['source'] == 'ipinfo' and d.get('org'):
+                return d['org']
+            if r['source'] == 'abuseipdb' and d.get('isp'):
+                return d['isp']
+            if r['source'] == 'virustotal' and d.get('as_owner'):
+                return d['as_owner']
+        elif ioc_type == 'domain':
+            if r['source'] == 'domain_checker' and d.get('registrar'):
+                return f"Registrar: {d['registrar']}"
+            if r['source'] == 'virustotal' and d.get('registrar'):
+                return f"Registrar: {d['registrar']}"
+        elif ioc_type == 'hash':
+            if r['source'] == 'virustotal' and d.get('file_name'):
+                return f"{d.get('file_type', 'File')}: {d['file_name']}"
+        elif ioc_type == 'email':
+            if r['source'] == 'emailrep':
+                return f"Reputation: {d.get('reputation', 'Unknown')}"
+    return 'N/A'
+
+
+@app.route('/api/lookup', methods=['POST'])
+@limiter.limit('15 per minute')
+def lookup():
+    """Main IOC lookup endpoint."""
+    body = request.get_json()
+    if not body or not body.get('query'):
+        return jsonify({'error': 'Missing query parameter'}), 400
+
+    result = perform_lookup_core(body['query'])
+    if 'error' in result:
+        return jsonify(result), 400
+
+    return jsonify(result)
+
+
+@app.route('/api/lookup/bulk', methods=['POST'])
+@limiter.limit('10 per minute')
+def lookup_bulk():
+    """Bulk IOC lookup endpoint. Queries up to 15 IOCs in parallel."""
+    body = request.get_json()
+    if not body or not body.get('queries') or not isinstance(body['queries'], list):
+        return jsonify({'error': 'Missing list of queries'}), 400
+
+    queries = [q.strip() for q in body['queries'] if q and q.strip()][:15]
+    if not queries:
+        return jsonify({'error': 'No valid queries provided'}), 400
+
+    logger.info(f"Bulk Lookup: Processing {len(queries)} IOCs")
+
+    bulk_results = []
+    # Query all IOCs in parallel using thread pool
+    with ThreadPoolExecutor(max_workers=min(len(queries), 8)) as executor:
+        futures = {executor.submit(perform_lookup_core, q): q for q in queries}
+
+        for future in as_completed(futures):
+            query = futures[future]
+            try:
+                res = future.result()
+                if 'error' in res:
+                    bulk_results.append({
+                        'query': query,
+                        'ioc_type': 'unknown',
+                        'success': False,
+                        'error': res['error'],
+                        'unified_score': 0,
+                        'threat_level': 'UNKNOWN',
+                        'summary': 'N/A'
+                    })
+                else:
+                    summary = get_ioc_summary(res['ioc_type'], res['results'])
+                    bulk_results.append({
+                        'query': res['query'],
+                        'ioc_type': res['ioc_type'],
+                        'success': True,
+                        'error': None,
+                        'unified_score': res['unified_score'],
+                        'threat_level': res['threat_level'],
+                        'summary': summary
+                    })
+            except Exception as e:
+                bulk_results.append({
+                    'query': query,
+                    'ioc_type': 'unknown',
+                    'success': False,
+                    'error': str(e)[:200],
+                    'unified_score': 0,
+                    'threat_level': 'UNKNOWN',
+                    'summary': 'N/A'
+                })
+
+    # Sort results in the order of original queries list for consistency
+    bulk_results.sort(key=lambda x: queries.index(x['query']) if x['query'] in queries else 99)
+
+    return jsonify({
+        'results': bulk_results,
+        'count': len(bulk_results),
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
+    })
 
 
 @app.route('/api/export/csv', methods=['POST'])

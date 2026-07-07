@@ -81,6 +81,13 @@
                             <h2>Investigate Any Indicator of Compromise</h2>
                             <p>Enter an <strong>IP address</strong>, <strong>domain</strong>, <strong>file hash</strong> (MD5/SHA1/SHA256), or <strong>email address</strong> to query VirusTotal, AbuseIPDB, IPInfo, OTX AlienVault, EmailRep, Hunter.io, and HIBP simultaneously.</p>
                         </div>
+                        
+                        <div class="scan-tabs">
+                            <button type="button" class="scan-tab active" id="tab-single"><i class="fa-solid fa-magnifying-glass"></i> Single Scan</button>
+                            <button type="button" class="scan-tab" id="tab-bulk"><i class="fa-solid fa-list-ol"></i> Bulk Scan</button>
+                        </div>
+
+                        <!-- Single Scan Form -->
                         <form class="search-form" id="search-form">
                             <div class="search-input-wrapper">
                                 <i class="fa-solid fa-magnifying-glass search-icon"></i>
@@ -91,7 +98,18 @@
                                 <i class="fa-solid fa-satellite-dish"></i> Scan IOC
                             </button>
                         </form>
-                        <div class="quick-samples">
+
+                        <!-- Bulk Scan Form -->
+                        <form class="search-form bulk-form" id="bulk-search-form" style="display:none;">
+                            <div class="bulk-input-wrapper">
+                                <textarea id="bulk-input" placeholder="Enter IOCs (IP, domain, hash, or email) - one per line&#10;Max 15 indicators. Example:&#10;8.8.8.8&#10;google.com&#10;e99a18c428cb38d5f260853678922e03" rows="5" required></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-scan" id="btn-bulk-scan">
+                                <i class="fa-solid fa-list-check"></i> Bulk Analyze
+                            </button>
+                        </form>
+
+                        <div class="quick-samples" id="quick-samples-wrapper">
                             <span>Try:</span>
                             <button type="button" class="sample-btn" data-query="8.8.8.8">8.8.8.8</button>
                             <button type="button" class="sample-btn" data-query="185.220.101.4">185.220.101.4</button>
@@ -129,6 +147,42 @@
                         <i class="fa-solid fa-triangle-exclamation"></i>
                         <p id="error-message">An error occurred.</p>
                         <button class="btn btn-outline" id="btn-dismiss-error">Dismiss</button>
+                    </div>
+                </section>
+
+                <!-- Bulk Results Dashboard -->
+                <section class="results-dashboard bulk-results-dashboard" id="bulk-results-dashboard" style="display:none;">
+                    <div class="results-header">
+                        <div class="result-ioc-info">
+                            <h2><i class="fa-solid fa-list-check"></i> Bulk Scan Summary</h2>
+                            <span class="result-timestamp" id="bulk-result-timestamp">Scanned at: -</span>
+                        </div>
+                        <div class="results-actions">
+                            <button class="btn btn-outline" id="btn-bulk-new-search">
+                                <i class="fa-solid fa-arrow-rotate-left"></i> New Search
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="bulk-results-card">
+                        <div class="bulk-table-wrapper">
+                            <table class="bulk-results-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Indicator</th>
+                                        <th>Type</th>
+                                        <th>Threat Score</th>
+                                        <th>Threat Level</th>
+                                        <th>Summary / ISP / Owner</th>
+                                        <th style="text-align: right;">Action</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="bulk-results-body">
+                                    <!-- Dynamic rows -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
@@ -273,6 +327,18 @@
                                 <span class="source-status" id="domain_checker-status">—</span>
                             </div>
                             <div class="source-card-body" id="domain_checker-body">
+                                <div class="source-skeleton"><p class="no-data-message">Awaiting results...</p></div>
+                            </div>
+                        </div>
+
+                        <!-- DNS History Card -->
+                        <div class="source-card dns-history-card" id="card-dns_history">
+                            <div class="source-card-header">
+                                <div class="source-logo dns-history-logo"><i class="fa-solid fa-server"></i></div>
+                                <h3>DNS & Passive DNS History</h3>
+                                <span class="source-status" id="dns_history-status">—</span>
+                            </div>
+                            <div class="source-card-body" id="dns_history-body">
                                 <div class="source-skeleton"><p class="no-data-message">Awaiting results...</p></div>
                             </div>
                         </div>

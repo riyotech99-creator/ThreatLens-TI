@@ -499,3 +499,154 @@ kbd {
 }
 
 
+/* Scan Tabs Switcher */
+.scan-tabs {
+    display: inline-flex;
+    background: rgba(5, 6, 11, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 20px;
+    padding: 3px;
+    margin-bottom: 24px;
+    backdrop-filter: blur(10px);
+}
+.scan-tab {
+    background: transparent;
+    border: none;
+    padding: 6px 16px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    border-radius: 17px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.scan-tab:hover {
+    color: var(--text-light);
+}
+.scan-tab.active {
+    background: linear-gradient(135deg, rgba(0, 240, 255, 0.15), rgba(30, 64, 175, 0.15));
+    border: 1px solid rgba(0, 240, 255, 0.3);
+    color: var(--neon-cyan);
+    box-shadow: 0 0 10px rgba(0, 240, 255, 0.15);
+}
+
+/* Bulk Input Form */
+.bulk-form {
+    flex-direction: column;
+}
+.bulk-input-wrapper {
+    flex: 1;
+    width: 100%;
+    background: rgba(5, 6, 11, 0.8);
+    border: 1px solid rgba(0, 240, 255, 0.15);
+    border-radius: 6px;
+    transition: var(--transition);
+}
+.bulk-input-wrapper:focus-within {
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 15px rgba(0, 240, 255, 0.2);
+}
+#bulk-input {
+    width: 100%;
+    background: transparent;
+    border: none;
+    padding: 16px;
+    color: var(--text-light);
+    font-family: var(--font-code);
+    font-size: 0.9rem;
+    outline: none;
+    resize: vertical;
+}
+#bulk-input::placeholder {
+    color: rgba(100, 116, 139, 0.6);
+    line-height: 1.5;
+}
+
+/* Bulk Results Dashboard & Table */
+.bulk-results-card {
+    background: rgba(8, 10, 18, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 8px;
+    padding: 20px;
+    backdrop-filter: blur(15px);
+    margin-top: 15px;
+}
+.bulk-table-wrapper {
+    overflow-x: auto;
+}
+.bulk-results-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+    text-align: left;
+}
+.bulk-results-table th {
+    font-weight: 700;
+    color: var(--text-muted);
+    border-bottom: 2px solid rgba(255, 255, 255, 0.06);
+    padding: 12px 16px;
+}
+.bulk-results-table td {
+    padding: 14px 16px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: var(--text-light);
+    vertical-align: middle;
+}
+.bulk-results-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+.bulk-results-table tbody tr:hover {
+    background-color: rgba(0, 240, 255, 0.02);
+}
+.bulk-results-table .btn-action {
+    padding: 4px 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+}
+
+/* DNS History Sub-tabs & Tables */
+.dns-subtabs {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    padding-bottom: 10px;
+}
+.dns-subtab {
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    padding: 6px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.2s;
+}
+.dns-subtab:hover {
+    color: var(--text-light);
+}
+.dns-subtab.active {
+    background: rgba(0, 240, 255, 0.1);
+    color: var(--neon-cyan);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+}
+.dns-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+.dns-table th {
+    text-align: left;
+    color: var(--text-muted);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    padding: 8px;
+}
+.dns-table td {
+    padding: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    color: var(--text-light);
+}
