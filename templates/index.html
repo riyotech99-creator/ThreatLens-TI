@@ -3,8 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="ThreatLens TI — Multi-source threat intelligence aggregation platform. Query IPs, domains, and file hashes across VirusTotal, AbuseIPDB, IPInfo, and OTX AlienVault.">
+    <meta name="description" content="ThreatLens TI — Multi-source threat intelligence aggregation platform. Query IPs, domains, file hashes, and emails across VirusTotal, AbuseIPDB, IPInfo, OTX AlienVault, EmailRep, Hunter.io, and URLScan.io.">
+    <meta name="keywords" content="threat intelligence, IOC lookup, cybersecurity, OSINT, VirusTotal, AbuseIPDB, SOC analyst">
+    <meta name="author" content="Riyotech">
+    <meta name="theme-color" content="#05060b">
     <title>ThreatLens TI — Threat Intelligence Aggregator</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔍</text></svg>">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&family=Outfit:wght@300;400;500;600;700;900&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
@@ -95,6 +99,9 @@
                             <button type="button" class="sample-btn" data-query="e99a18c428cb38d5f260853678922e03">e99a18c4... (MD5)</button>
                             <button type="button" class="sample-btn" data-query="test@example.com">test@example.com</button>
                         </div>
+                        <div class="keyboard-hint">
+                            <kbd>Ctrl</kbd>+<kbd>K</kbd> to search &nbsp;•&nbsp; <kbd>Esc</kbd> to go back
+                        </div>
                     </div>
                 </section>
 
@@ -134,9 +141,14 @@
                             <h2 id="result-query-display">185.220.101.4</h2>
                             <span class="result-timestamp" id="result-timestamp">Scanned at: 2026-07-07 03:00:00 UTC</span>
                         </div>
-                        <button class="btn btn-outline" id="btn-new-search">
-                            <i class="fa-solid fa-arrow-rotate-left"></i> New Search
-                        </button>
+                        <div class="results-actions">
+                            <button class="btn btn-export" onclick="exportCSV()" title="Export as CSV">
+                                <i class="fa-solid fa-file-csv"></i> Export CSV
+                            </button>
+                            <button class="btn btn-outline" id="btn-new-search">
+                                <i class="fa-solid fa-arrow-rotate-left"></i> New Search
+                            </button>
+                        </div>
                     </div>
 
                     <!-- Unified Score Banner -->

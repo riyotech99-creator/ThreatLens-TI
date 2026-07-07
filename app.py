@@ -1,25 +1,41 @@
 """
 ThreatLens TI — Multi-Source Threat Intelligence Aggregation Platform
 Flask backend that proxies IOC lookups to VirusTotal, AbuseIPDB, IPInfo, OTX AlienVault,
-EmailRep.io, Hunter.io, and Have I Been Pwned.
+EmailRep.io, Hunter.io, and URLScan.io.
 """
 
 import os
 import re
+import io
+import csv
 import time
 import hashlib
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from functools import wraps
 
 import requests
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, render_template, request, jsonify, Response
+from flask_caching import Cache
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_cors import CORS
 from dotenv import load_dotenv
 from datetime import datetime
 
 # Load environment variables
 load_dotenv()
 
+# --- Logging ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
+
+# --- Extensions ---
+cache = Cache(app, config={'CACHE_TYPE': 'SimpleCache', 'CACHE_DEFAULT_TIMEOUT': 300})
+limiter = Limiter(get_remote_address, app=app, default_limits=['60 per minute'])
+CORS(app, resources={r'/api/*': {'origins': '*'}})
 
 # --- API Keys ---
 VT_API_KEY = os.getenv('VIRUSTOTAL_API_KEY', '')
@@ -32,18 +48,35 @@ URLSCAN_API_KEY = os.getenv('URLSCAN_API_KEY', '')
 # --- Constants ---
 REQUEST_TIMEOUT = 12  # seconds per API call
 MAX_WORKERS = 8
+MAX_QUERY_LENGTH = 256
 
 # --- IOC Type Detection ---
+IPV6_PATTERN = re.compile(
+    r'^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|'
+    r'^([0-9a-fA-F]{1,4}:){1,7}:$|'
+    r'^([0-9a-fA-F]{1,4}:){1,6}:[0-9a-fA-F]{1,4}$|'
+    r'^([0-9a-fA-F]{1,4}:){1,5}(:[0-9a-fA-F]{1,4}){1,2}$|'
+    r'^([0-9a-fA-F]{1,4}:){1,4}(:[0-9a-fA-F]{1,4}){1,3}$|'
+    r'^([0-9a-fA-F]{1,4}:){1,3}(:[0-9a-fA-F]{1,4}){1,4}$|'
+    r'^([0-9a-fA-F]{1,4}:){1,2}(:[0-9a-fA-F]{1,4}){1,5}$|'
+    r'^[0-9a-fA-F]{1,4}:(:[0-9a-fA-F]{1,4}){1,6}$|'
+    r'^:((:[0-9a-fA-F]{1,4}){1,7}|:)$|'
+    r'^::$'
+)
+
 def detect_ioc_type(query):
     """Auto-detect the type of Indicator of Compromise."""
     query = query.strip()
 
     # IPv4 address
     if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', query):
-        # Validate each octet
         octets = query.split('.')
         if all(0 <= int(o) <= 255 for o in octets):
             return 'ip'
+
+    # IPv6 address
+    if IPV6_PATTERN.match(query):
+        return 'ip'
 
     # File hash (MD5=32, SHA1=40, SHA256=64)
     if re.match(r'^[a-fA-F0-9]{32}$', query):
@@ -197,13 +230,32 @@ def query_abuseipdb(ioc, ioc_type):
 
         raw = resp.json().get('data', {})
 
-        # Extract recent reports/comments
+        # Extract recent reports/comments and category tags
         reports = raw.get('reports', [])
         comments = []
+        categories_set = set()
+
+        # AbuseIPDB Category Mappings
+        ABUSE_CATEGORIES = {
+            1: 'DNS Compromise', 2: 'DNS Poisoning', 3: 'Fraud Webmail', 4: 'DDoS Attack',
+            5: 'FTP Brute-Force', 6: 'Ping of Death', 7: 'Phishing', 8: 'Fraud VoIP',
+            9: 'Open Proxy', 10: 'Web Spam', 11: 'Email Spam', 12: 'Blog Spam',
+            13: 'VPN IP', 14: 'Port Scan', 15: 'Hacking', 16: 'SQL Injection',
+            17: 'Spoofing', 18: 'SSH Brute-Force', 19: 'Bad Web Bot', 20: 'Exploited Host',
+            21: 'Web App Attack', 22: 'SSH Abuse', 23: 'IoT Targeted'
+        }
+
         for r_item in reports:
             comment_text = r_item.get('comment', '').strip()
             if comment_text and comment_text not in comments:
                 comments.append(comment_text)
+
+            # Map category IDs to string names
+            cats = r_item.get('categories', [])
+            for c_id in cats:
+                cat_name = ABUSE_CATEGORIES.get(c_id)
+                if cat_name:
+                    categories_set.add(cat_name)
 
         result = {
             'found': True,
@@ -217,7 +269,8 @@ def query_abuseipdb(ioc, ioc_type):
             'is_tor': raw.get('isTor', False),
             'is_whitelisted': raw.get('isWhitelisted', False),
             'last_reported_at': raw.get('lastReportedAt', None),
-            'comments': comments[:5],  # Top 5 unique comments
+            'comments': comments,  # Return all unique comments
+            'tags': sorted(list(categories_set)),  # Unique category tags
             'score': raw.get('abuseConfidenceScore', 0)
         }
 
@@ -735,6 +788,7 @@ def index():
 
 
 @app.route('/api/lookup', methods=['POST'])
+@limiter.limit('15 per minute')
 def lookup():
     """Main IOC lookup endpoint. Queries all sources in parallel."""
     body = request.get_json()
@@ -745,9 +799,25 @@ def lookup():
     if not query:
         return jsonify({'error': 'Empty query'}), 400
 
+    if len(query) > MAX_QUERY_LENGTH:
+        return jsonify({'error': f'Query too long (max {MAX_QUERY_LENGTH} characters)'}), 400
+
+    # Sanitize: only allow alphanumeric, dots, colons, hyphens, @, underscores
+    if not re.match(r'^[a-zA-Z0-9.:@_\-]+$', query):
+        return jsonify({'error': 'Query contains invalid characters'}), 400
+
     ioc_type = detect_ioc_type(query)
     if ioc_type == 'unknown':
-        return jsonify({'error': f'Could not detect IOC type for: {query}. Please enter a valid IPv4 address, domain, file hash (MD5/SHA1/SHA256), or email address.'}), 400
+        return jsonify({'error': f'Could not detect IOC type for: {query}. Please enter a valid IP address (IPv4/IPv6), domain, file hash (MD5/SHA1/SHA256), or email address.'}), 400
+
+    logger.info(f'Lookup: {ioc_type} — {query}')
+
+    # Check cache first
+    cache_key = f'lookup_{hashlib.md5(query.encode()).hexdigest()}'
+    cached = cache.get(cache_key)
+    if cached:
+        cached['from_cache'] = True
+        return jsonify(cached)
 
     # Query only applicable APIs in parallel
     supported_types = {
@@ -816,7 +886,7 @@ def lookup():
     containment = generate_containment(query, ioc_type)
 
     # Check which API keys are configured
-    api_status = {
+    api_status_data = {
         'virustotal': bool(VT_API_KEY),
         'abuseipdb': bool(ABUSE_API_KEY),
         'ipinfo': bool(IPINFO_API_KEY),
@@ -827,15 +897,103 @@ def lookup():
         'emailrep': True  # No key needed
     }
 
-    return jsonify({
+    response_data = {
         'query': query,
         'ioc_type': ioc_type,
         'unified_score': unified_score,
         'threat_level': threat_level,
         'results': results,
         'containment': containment,
-        'api_status': api_status,
-        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime())
+        'api_status': api_status_data,
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime()),
+        'from_cache': False
+    }
+
+    # Cache for 5 minutes
+    cache.set(cache_key, response_data, timeout=300)
+
+    return jsonify(response_data)
+
+
+@app.route('/api/export/csv', methods=['POST'])
+@limiter.limit('10 per minute')
+def export_csv():
+    """Export scan results as CSV."""
+    body = request.get_json()
+    if not body or not body.get('results'):
+        return jsonify({'error': 'No results to export'}), 400
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    query = body.get('query', 'unknown')
+    ioc_type = body.get('ioc_type', 'unknown')
+    score = body.get('unified_score', 0)
+    threat_level = body.get('threat_level', 'UNKNOWN')
+    timestamp = body.get('timestamp', '')
+
+    # Header info
+    writer.writerow(['ThreatLens TI — IOC Scan Report'])
+    writer.writerow(['IOC', query])
+    writer.writerow(['Type', ioc_type.upper()])
+    writer.writerow(['Unified Score', f'{score}/100'])
+    writer.writerow(['Threat Level', threat_level])
+    writer.writerow(['Scan Time', timestamp])
+    writer.writerow([])
+
+    # Per-source results
+    writer.writerow(['Source', 'Status', 'Score', 'Key Findings'])
+    for r in body.get('results', []):
+        source = r.get('source', 'unknown')
+        if not r.get('success'):
+            writer.writerow([source, 'ERROR', '', r.get('error', '')])
+            continue
+        data = r.get('data', {})
+        if data.get('not_applicable'):
+            writer.writerow([source, 'N/A', '', data.get('message', '')])
+            continue
+        if data.get('found') is False:
+            writer.writerow([source, 'NOT FOUND', '', data.get('message', '')])
+            continue
+
+        src_score = data.get('score', 0)
+        # Collect key findings
+        findings = []
+        for k, v in data.items():
+            if k in ('score', 'found', 'ioc_type', 'not_applicable'):
+                continue
+            if isinstance(v, (list, dict)):
+                continue
+            if v and v != 'N/A' and v != 'Unknown' and v is not False:
+                findings.append(f'{k}={v}')
+        writer.writerow([source, 'OK', src_score, '; '.join(findings[:8])])
+
+    csv_output = output.getvalue()
+    output.close()
+
+    return Response(
+        csv_output,
+        mimetype='text/csv',
+        headers={'Content-Disposition': f'attachment; filename=threatlens_{query}_{ioc_type}.csv'}
+    )
+
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Health check endpoint for monitoring."""
+    return jsonify({
+        'status': 'healthy',
+        'service': 'ThreatLens TI',
+        'version': '1.1.0',
+        'timestamp': time.strftime('%Y-%m-%d %H:%M:%S UTC', time.gmtime()),
+        'api_keys_configured': {
+            'virustotal': bool(VT_API_KEY),
+            'abuseipdb': bool(ABUSE_API_KEY),
+            'ipinfo': bool(IPINFO_API_KEY),
+            'otx': bool(OTX_API_KEY),
+            'hunterio': bool(HUNTER_API_KEY),
+            'urlscan': bool(URLSCAN_API_KEY),
+        }
     })
 
 

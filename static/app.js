@@ -1,6 +1,27 @@
+// --- Global State ---
+let lastScanData = null;
+
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+// --- Toast Notification System ---
+function showToast(message, type = 'info', duration = 3000) {
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = 'position:fixed;top:80px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px;';
+        document.body.appendChild(container);
+    }
+    const icons = { info: 'fa-circle-info', success: 'fa-circle-check', error: 'fa-circle-xmark', warning: 'fa-triangle-exclamation' };
+    const colors = { info: '#0ea5e9', success: '#00ff66', error: '#ff3366', warning: '#ff9f1c' };
+    const toast = document.createElement('div');
+    toast.style.cssText = `display:flex;align-items:center;gap:10px;padding:12px 18px;border-radius:6px;font-size:0.82rem;font-weight:600;color:#e2e8f0;backdrop-filter:blur(12px);border:1px solid ${colors[type]}33;background:rgba(8,10,18,0.92);box-shadow:0 4px 20px rgba(0,0,0,0.4);animation:fadeIn 0.3s ease;min-width:200px;`;
+    toast.innerHTML = `<i class="fa-solid ${icons[type]}" style="color:${colors[type]}"></i> ${message}`;
+    container.appendChild(toast);
+    setTimeout(() => { toast.style.opacity = '0'; toast.style.transition = 'opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, duration);
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,7 +32,48 @@ document.addEventListener('DOMContentLoaded', () => {
     setupHistory();
     setupNewSearchBtn();
     setupErrorDismiss();
+    setupKeyboardShortcuts();
 });
+
+// --- Keyboard Shortcuts ---
+function setupKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Ctrl+K or Cmd+K → focus search
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            const headerInput = document.getElementById('header-search-input');
+            const mainInput = document.getElementById('search-input');
+            if (headerInput && headerInput.offsetParent !== null) { headerInput.focus(); headerInput.select(); }
+            else if (mainInput) { mainInput.focus(); mainInput.select(); }
+        }
+        // Escape → back to hero
+        if (e.key === 'Escape') {
+            const hero = document.getElementById('search-hero');
+            if (hero && hero.style.display === 'none') showView('hero');
+        }
+    });
+}
+
+// --- CSV Export ---
+function exportCSV() {
+    if (!lastScanData) { showToast('No scan data to export', 'warning'); return; }
+    fetch('/api/export/csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(lastScanData)
+    }).then(r => {
+        if (!r.ok) throw new Error('Export failed');
+        return r.blob();
+    }).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `threatlens_${lastScanData.query}_${lastScanData.ioc_type}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV exported successfully', 'success');
+    }).catch(() => showToast('CSV export failed', 'error'));
+}
 
 // --- Live UTC Clock ---
 function setupClock() {
@@ -48,6 +110,7 @@ function setDot(id, active) {
 function detectType(q) {
     q = q.trim();
     if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(q)) return 'ip';
+    if (/^([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}$/.test(q) || /^::/.test(q) || /::$/.test(q)) return 'ip';
     if (/^[a-fA-F0-9]{32}$/.test(q) || /^[a-fA-F0-9]{40}$/.test(q) || /^[a-fA-F0-9]{64}$/.test(q)) return 'hash';
     if (/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/.test(q)) return 'email';
     if (/^[a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?(\.[a-zA-Z]{2,})+$/.test(q)) return 'domain';
@@ -189,6 +252,8 @@ async function runLookup(query) {
             return;
         }
 
+        lastScanData = data;
+        if (data.from_cache) showToast('Results loaded from cache', 'info');
         saveHistory(query, data.ioc_type, data.unified_score, data.threat_level);
         renderResults(data);
         showView('results');
@@ -253,15 +318,30 @@ function renderGauge(score, level) {
     const gauge = document.getElementById('score-gauge');
     const numEl = document.getElementById('score-number');
     const levelEl = document.getElementById('score-level');
-    const deg = (score / 100) * 360;
+    const targetDeg = (score / 100) * 360;
 
     let color = 'var(--neon-green)';
     if (score >= 75) color = 'var(--neon-red)';
     else if (score >= 50) color = 'var(--neon-orange)';
     else if (score >= 25) color = '#fbbf24';
 
-    gauge.style.background = `conic-gradient(${color} 0deg ${deg}deg, rgba(255,255,255,0.04) ${deg}deg 360deg)`;
-    numEl.textContent = Math.round(score);
+    // Animated count-up
+    const duration = 1200;
+    const startTime = performance.now();
+    const animate = (now) => {
+        const elapsed = now - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+        const eased = 1 - Math.pow(1 - progress, 3); // ease-out cubic
+        const currentScore = Math.round(score * eased);
+        const currentDeg = targetDeg * eased;
+
+        gauge.style.background = `conic-gradient(${color} 0deg ${currentDeg}deg, rgba(255,255,255,0.04) ${currentDeg}deg 360deg)`;
+        numEl.textContent = currentScore;
+
+        if (progress < 1) requestAnimationFrame(animate);
+    };
+    requestAnimationFrame(animate);
+
     numEl.style.color = color.startsWith('var') ? color.replace('var(','').replace(')','') : color;
     levelEl.textContent = level;
 
@@ -343,17 +423,45 @@ function renderSourceCard(r) {
         if (d.is_whitelisted !== undefined) html += row('Whitelisted', `<span class="${d.is_whitelisted?'green':''}">${d.is_whitelisted ? 'Yes' : 'No'}</span>`);
         if (d.last_reported_at) html += row('Last Reported', d.last_reported_at.substring(0,19));
         
+        if (d.tags && d.tags.length > 0) {
+            html += `<div class="d-row"><span class="d-key">Community Tags</span><span class="d-value"><div class="tag-list">${d.tags.map(t=>`<span class="mini-tag">${t}</span>`).join('')}</div></span></div>`;
+        }
+        
         if (d.comments && d.comments.length > 0) {
             html += `</div><div class="abuse-comments-section"><p class="comments-header"><i class="fa-solid fa-comments"></i> Recent Community Reports</p><ul class="abuse-comments-list">`;
-            d.comments.forEach(c => {
-                const truncated = c.length > 120 ? c.substring(0, 117) + '...' : c;
-                html += `<li class="abuse-comment-item">${escapeHtml(truncated)}</li>`;
+            d.comments.forEach((c, idx) => {
+                const truncated = c.length > 150 ? c.substring(0, 147) + '...' : c;
+                const style = idx === 0 ? '' : 'style="display:none;"';
+                const cls = idx === 0 ? 'abuse-comment-item' : 'abuse-comment-item more-comment';
+                html += `<li class="${cls}" ${style}>${escapeHtml(truncated)}</li>`;
             });
             html += `</ul>`;
+            if (d.comments.length > 1) {
+                html += `<button class="btn-see-all-comments" data-expanded="false">See all (${d.comments.length})</button>`;
+            }
+            html += `</div>`;
         } else {
             html += `</div>`;
         }
         bodyEl.innerHTML = html;
+
+        // Set up the click handler for the toggle button
+        const btnToggle = bodyEl.querySelector('.btn-see-all-comments');
+        if (btnToggle) {
+            btnToggle.addEventListener('click', () => {
+                const moreComments = bodyEl.querySelectorAll('.more-comment');
+                const isExpanded = btnToggle.getAttribute('data-expanded') === 'true';
+                if (isExpanded) {
+                    moreComments.forEach(item => item.style.display = 'none');
+                    btnToggle.textContent = `See all (${d.comments.length})`;
+                    btnToggle.setAttribute('data-expanded', 'false');
+                } else {
+                    moreComments.forEach(item => item.style.display = 'block');
+                    btnToggle.textContent = 'Show less';
+                    btnToggle.setAttribute('data-expanded', 'true');
+                }
+            });
+        }
     }
     else if (r.source === 'ipinfo') {
         let html = `<div class="detail-grid">`;
@@ -541,6 +649,7 @@ function renderContainment(scripts) {
     copyBtn.onclick = () => {
         navigator.clipboard.writeText(codeEl.textContent).then(() => {
             copyBtn.innerHTML = '<i class="fa-solid fa-check"></i>';
+            showToast('Script copied to clipboard', 'success');
             setTimeout(() => { copyBtn.innerHTML = '<i class="fa-regular fa-copy"></i>'; }, 1500);
         });
     };

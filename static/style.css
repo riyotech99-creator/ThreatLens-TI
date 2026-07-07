@@ -426,3 +426,62 @@ h1,h2,h3,h4,h5,h6 { font-family:var(--font-header); letter-spacing:-0.01em; }
     border-radius: 0 4px 4px 0;
     color: var(--text-light);
 }
+
+/* Results Actions */
+.results-actions { display:flex; gap:10px; align-items:center; }
+
+/* Export Button */
+.btn-export {
+    background: rgba(0, 255, 102, 0.08);
+    border: 1px solid rgba(0, 255, 102, 0.25);
+    color: var(--neon-green);
+}
+.btn-export:hover {
+    background: rgba(0, 255, 102, 0.15);
+    border-color: var(--neon-green);
+    transform: translateY(-1px);
+    box-shadow: 0 0 12px rgba(0, 255, 102, 0.2);
+}
+
+/* Keyboard Shortcut Hints */
+.keyboard-hint {
+    margin-top: 18px;
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    opacity: 0.6;
+}
+kbd {
+    display: inline-block;
+    padding: 2px 6px;
+    font-family: var(--font-code);
+    font-size: 0.65rem;
+    font-weight: 700;
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    color: var(--neon-cyan);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.3);
+}
+
+/* See All Comments Button */
+.btn-see-all-comments {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 5px 12px;
+    font-family: var(--font-sans);
+    font-size: 0.72rem;
+    font-weight: 600;
+    color: var(--neon-cyan);
+    background: rgba(0, 240, 255, 0.05);
+    border: 1px solid rgba(0, 240, 255, 0.2);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.btn-see-all-comments:hover {
+    background: rgba(0, 240, 255, 0.15);
+    border-color: var(--neon-cyan);
+    box-shadow: 0 0 8px rgba(0, 240, 255, 0.3);
+    color: #ffffff;
+}
+
