@@ -1,5 +1,6 @@
 // --- Global State ---
 let lastScanData = null;
+let navigatedFromBulk = false;
 
 function escapeHtml(str) {
     if (!str) return '';
@@ -31,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSamples();
     setupHistory();
     setupNewSearchBtn();
+    setupBackToBulkBtn();
     setupErrorDismiss();
     setupKeyboardShortcuts();
     setupBulkSearch();
@@ -47,10 +49,15 @@ function setupKeyboardShortcuts() {
             if (headerInput && headerInput.offsetParent !== null) { headerInput.focus(); headerInput.select(); }
             else if (mainInput) { mainInput.focus(); mainInput.select(); }
         }
-        // Escape → back to hero
+        // Escape → back to hero or bulk-results
         if (e.key === 'Escape') {
-            const hero = document.getElementById('search-hero');
-            if (hero && hero.style.display === 'none') showView('hero');
+            const results = document.getElementById('results-dashboard');
+            if (results && results.style.display === 'block' && navigatedFromBulk) {
+                showView('bulk-results');
+            } else {
+                const hero = document.getElementById('search-hero');
+                if (hero && hero.style.display === 'none') showView('hero');
+            }
         }
     });
 }
@@ -110,6 +117,7 @@ function setDot(id, active) {
 // --- IOC Type Detection (client-side preview) ---
 function detectType(q) {
     q = q.trim();
+    if (/^https?:\/\//i.test(q) || q.includes('/')) return 'url';
     if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(q)) return 'ip';
     if (/^([0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{0,4}$/.test(q) || /^::/.test(q) || /::$/.test(q)) return 'ip';
     if (/^[a-fA-F0-9]{32}$/.test(q) || /^[a-fA-F0-9]{40}$/.test(q) || /^[a-fA-F0-9]{64}$/.test(q)) return 'hash';
@@ -180,6 +188,11 @@ function setupNewSearchBtn() {
     if (btn) btn.addEventListener('click', () => showView('hero'));
 }
 
+function setupBackToBulkBtn() {
+    const btn = document.getElementById('btn-back-to-bulk');
+    if (btn) btn.addEventListener('click', () => showView('bulk-results'));
+}
+
 function setupErrorDismiss() {
     const btn = document.getElementById('btn-dismiss-error');
     if (btn) btn.addEventListener('click', () => showView('hero'));
@@ -209,6 +222,10 @@ function showView(view) {
     }
     else if (view === 'results') {
         if (results) results.style.display = 'block';
+        const btnBackToBulk = document.getElementById('btn-back-to-bulk');
+        if (btnBackToBulk) {
+            btnBackToBulk.style.display = navigatedFromBulk ? 'inline-flex' : 'none';
+        }
         if (headerSearch) {
             headerSearch.style.display = 'block';
             const lastQuery = document.getElementById('search-input').value;
@@ -231,7 +248,8 @@ function showView(view) {
 }
 
 // --- Main Lookup ---
-async function runLookup(query) {
+async function runLookup(query, fromBulk = false) {
+    navigatedFromBulk = fromBulk;
     // Sync main input
     const input = document.getElementById('search-input');
     if (input) input.value = query;
@@ -906,7 +924,7 @@ function setupBulkSearch() {
                     badge.className = `ioc-type-badge ${t}`;
                 }
             }
-            runLookup(query);
+            runLookup(query, true);
         });
     }
 

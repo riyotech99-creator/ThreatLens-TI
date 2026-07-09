@@ -202,6 +202,7 @@ h1,h2,h3,h4,h5,h6 { font-family:var(--font-header); letter-spacing:-0.01em; }
 .ioc-type-badge.domain { background:rgba(168,85,247,0.1); color:var(--neon-purple); }
 .ioc-type-badge.hash { background:rgba(255,159,28,0.1); color:var(--neon-orange); }
 .ioc-type-badge.email { background:rgba(20,184,166,0.1); color:var(--emailrep-teal); }
+.ioc-type-badge.url { background:rgba(14,165,233,0.1); color:#0ea5e9; }
 
 /* Buttons */
 .btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:10px 20px;
@@ -248,6 +249,7 @@ h1,h2,h3,h4,h5,h6 { font-family:var(--font-header); letter-spacing:-0.01em; }
 .result-type-badge.domain { background:rgba(168,85,247,0.1); color:var(--neon-purple); border-color:rgba(168,85,247,0.2); }
 .result-type-badge.hash { background:rgba(255,159,28,0.1); color:var(--neon-orange); border-color:rgba(255,159,28,0.2); }
 .result-type-badge.email { background:rgba(20,184,166,0.1); color:var(--emailrep-teal); border-color:rgba(20,184,166,0.2); }
+.result-type-badge.url { background:rgba(14,165,233,0.1); color:#0ea5e9; border-color:rgba(14,165,233,0.2); }
 #result-query-display { font-family:var(--font-code); font-size:1.3rem; font-weight:700; }
 .result-timestamp { font-size:0.72rem; color:var(--text-muted); }
 

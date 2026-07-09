@@ -68,6 +68,10 @@ def detect_ioc_type(query):
     """Auto-detect the type of Indicator of Compromise."""
     query = query.strip()
 
+    # URL detection (starts with http:// or https://, or contains slashes /)
+    if re.match(r'^https?://', query, re.IGNORECASE) or '/' in query:
+        return 'url'
+
     # IPv4 address
     if re.match(r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$', query):
         octets = query.split('.')
@@ -544,9 +548,9 @@ def query_hunterio(ioc, ioc_type):
 
 
 def query_urlscan(ioc, ioc_type):
-    """Query URLScan.io search API. Supports domains and IPs."""
-    if ioc_type not in ('domain', 'ip'):
-        return {'source': 'urlscan', 'success': True, 'error': None, 'data': {'not_applicable': True, 'message': 'URLScan only supports domain and IP lookups'}}
+    """Query URLScan.io search API. Supports domains, IPs, and URLs."""
+    if ioc_type not in ('domain', 'ip', 'url'):
+        return {'source': 'urlscan', 'success': True, 'error': None, 'data': {'not_applicable': True, 'message': 'URLScan only supports domain, IP, and URL lookups'}}
 
     headers = {}
     if URLSCAN_API_KEY:
@@ -555,6 +559,8 @@ def query_urlscan(ioc, ioc_type):
     try:
         if ioc_type == 'domain':
             query_str = f'page.domain:{ioc}'
+        elif ioc_type == 'url':
+            query_str = f'page.url:"{ioc}"'
         else:
             query_str = f'page.ip:{ioc}'
 
@@ -569,6 +575,20 @@ def query_urlscan(ioc, ioc_type):
 
         data = resp.json()
         results = data.get('results', [])
+        
+        # Fallback: if we queried a URL and found nothing, let's try searching for the domain of that URL
+        if not results and ioc_type == 'url':
+            domain_part = ioc
+            if re.match(r'^https?://', domain_part, re.IGNORECASE):
+                domain_part = re.sub(r'^https?://', '', domain_part, flags=re.IGNORECASE)
+            domain_part = re.split(r'[/?:#]', domain_part)[0].strip()
+            if domain_part:
+                resp_domain = requests.get(f'https://urlscan.io/api/v1/search/?q=page.domain:{domain_part}',
+                                            headers=headers,
+                                            timeout=REQUEST_TIMEOUT)
+                if resp_domain.status_code == 200:
+                    results = resp_domain.json().get('results', [])
+
         if not results:
             return {'source': 'urlscan', 'success': True, 'error': None, 'data': {'found': False, 'message': 'No recent scans found for this IOC in URLScan database.'}}
 
@@ -828,6 +848,15 @@ def generate_containment(ioc, ioc_type):
         scripts['snort'] = f'alert dns any any -> any any (msg:"ThreatLens: DNS query for malicious domain {ioc}"; content:"{ioc}"; nocase; sid:1000002; rev:1;)'
         scripts['paloalto'] = f'set profiles custom-url-category "ThreatLens-Blocked" list "{ioc}"\nset security policies deny-domain from any to any url-category "ThreatLens-Blocked" action deny'
 
+    elif ioc_type == 'url':
+        domain = ioc
+        if re.match(r'^https?://', domain, re.IGNORECASE):
+            domain = re.sub(r'^https?://', '', domain, flags=re.IGNORECASE)
+        domain = re.split(r'[/?:#]', domain)[0].strip()
+        scripts['exchange_block'] = f'# Block URL in Exchange Online\nNew-TenantAllowBlockListItems -ListType Url -Block -Entries "{ioc}"'
+        scripts['squid_proxy'] = f'# Add to Squid blocked URLs list\nacl blocked_url url_regex {ioc}\nhttp_access deny blocked_url'
+        scripts['windows_hosts'] = f'# Block domain of the URL in hosts file\n0.0.0.0 {domain}'
+
     elif ioc_type == 'hash':
         scripts['yara'] = f'rule ThreatLens_MalwareHash {{\n    meta:\n        description = "Block file by hash - ThreatLens"\n        hash = "{ioc}"\n    condition:\n        hash.md5(0, filesize) == "{ioc}" or\n        hash.sha256(0, filesize) == "{ioc}"\n}}'
         scripts['windows_defender'] = f'# Block hash in Windows Defender\nAdd-MpPreference -ThreatIDDefaultAction_Actions 6 -ThreatIDDefaultAction_Ids 2147001234\n# Manual quarantine:\nSet-MpPreference -ExclusionExtension ""\n# Hash: {ioc}'
@@ -859,8 +888,8 @@ def perform_lookup_core(query):
     if len(query) > MAX_QUERY_LENGTH:
         return {'error': f'Query too long (max {MAX_QUERY_LENGTH} characters)'}
 
-    # Sanitize: only allow alphanumeric, dots, colons, hyphens, @, underscores
-    if not re.match(r'^[a-zA-Z0-9.:@_\-]+$', query):
+    # Sanitize: only allow alphanumeric, dots, colons, hyphens, @, underscores, slashes, ?, =, &, %
+    if not re.match(r'^[a-zA-Z0-9.:@_\-/?=&%]+$', query):
         return {'error': 'Query contains invalid characters'}
 
     ioc_type = detect_ioc_type(query)
@@ -874,6 +903,15 @@ def perform_lookup_core(query):
         cached['from_cache'] = True
         return cached
 
+    # Parse URL if needed
+    extracted_domain = None
+    if ioc_type == 'url':
+        domain_part = query
+        if re.match(r'^https?://', domain_part, re.IGNORECASE):
+            domain_part = re.sub(r'^https?://', '', domain_part, flags=re.IGNORECASE)
+        domain_part = re.split(r'[/?:#]', domain_part)[0]
+        extracted_domain = domain_part.strip()
+
     # Query only applicable APIs in parallel
     supported_types = {
         'virustotal': ['ip', 'domain', 'hash'],
@@ -882,7 +920,7 @@ def perform_lookup_core(query):
         'otx': ['ip', 'domain', 'hash'],
         'emailrep': ['email'],
         'hunterio': ['email'],
-        'urlscan': ['ip', 'domain'],
+        'urlscan': ['ip', 'domain', 'url'],
         'domain_checker': ['domain'],
         'dns_history': ['domain']
     }
@@ -902,8 +940,28 @@ def perform_lookup_core(query):
     ]
 
     for name, func in query_functions:
-        if ioc_type in supported_types.get(name, []):
-            applicable_queries.append((name, func))
+        run_query = query
+        run_type = ioc_type
+        
+        # If it's a URL, use extracted domain for APIs that don't support URL but support domain
+        if ioc_type == 'url' and 'url' not in supported_types.get(name, []):
+            if 'domain' in supported_types.get(name, []):
+                run_query = extracted_domain
+                run_type = 'domain'
+            else:
+                results.append({
+                    'source': name,
+                    'success': True,
+                    'error': None,
+                    'data': {
+                        'not_applicable': True,
+                        'message': f'{name} does not support url lookups'
+                    }
+                })
+                continue
+
+        if run_type in supported_types.get(name, []):
+            applicable_queries.append((name, func, run_query, run_type))
         else:
             results.append({
                 'source': name,
@@ -918,8 +976,8 @@ def perform_lookup_core(query):
     if applicable_queries:
         with ThreadPoolExecutor(max_workers=len(applicable_queries)) as executor:
             futures = {}
-            for name, func in applicable_queries:
-                future = executor.submit(func, query, ioc_type)
+            for name, func, run_query, run_type in applicable_queries:
+                future = executor.submit(func, run_query, run_type)
                 futures[future] = name
 
             for future in as_completed(futures):
@@ -988,7 +1046,9 @@ def get_ioc_summary(ioc_type, results):
                 return d['isp']
             if r['source'] == 'virustotal' and d.get('as_owner'):
                 return d['as_owner']
-        elif ioc_type == 'domain':
+        elif ioc_type in ('domain', 'url'):
+            if r['source'] == 'urlscan' and d.get('page_title'):
+                return f"Title: {d['page_title']}"
             if r['source'] == 'domain_checker' and d.get('registrar'):
                 return f"Registrar: {d['registrar']}"
             if r['source'] == 'virustotal' and d.get('registrar'):
