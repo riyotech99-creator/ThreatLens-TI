@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupSamples();
     setupHistory();
     setupNewSearchBtn();
+    setupBrandClick();
     setupBackToBulkBtn();
     setupErrorDismiss();
     setupKeyboardShortcuts();
@@ -186,6 +187,24 @@ function setupSamples() {
 function setupNewSearchBtn() {
     const btn = document.getElementById('btn-new-search');
     if (btn) btn.addEventListener('click', () => showView('hero'));
+}
+
+function setupBrandClick() {
+    const brand = document.getElementById('brand-logo');
+    if (brand) {
+        brand.addEventListener('click', () => {
+            const input = document.getElementById('search-input');
+            const headerInput = document.getElementById('header-search-input');
+            if (input) input.value = '';
+            if (headerInput) headerInput.value = '';
+            const badge = document.getElementById('ioc-type-badge');
+            if (badge) {
+                badge.textContent = 'TYPE';
+                badge.className = 'ioc-type-badge';
+            }
+            showView('hero');
+        });
+    }
 }
 
 function setupBackToBulkBtn() {
