@@ -37,6 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     setupErrorDismiss();
     setupKeyboardShortcuts();
     setupBulkSearch();
+    setupRouter();
 });
 
 // --- Keyboard Shortcuts ---
@@ -186,7 +187,12 @@ function setupSamples() {
 
 function setupNewSearchBtn() {
     const btn = document.getElementById('btn-new-search');
-    if (btn) btn.addEventListener('click', () => showView('hero'));
+    if (btn) btn.addEventListener('click', () => {
+        if (window.location.pathname !== '/') {
+            history.pushState({}, '', '/');
+        }
+        showView('hero');
+    });
 }
 
 function setupBrandClick() {
@@ -202,6 +208,9 @@ function setupBrandClick() {
                 badge.textContent = 'TYPE';
                 badge.className = 'ioc-type-badge';
             }
+            if (window.location.pathname !== '/') {
+                history.pushState({}, '', '/');
+            }
             showView('hero');
         });
     }
@@ -209,12 +218,22 @@ function setupBrandClick() {
 
 function setupBackToBulkBtn() {
     const btn = document.getElementById('btn-back-to-bulk');
-    if (btn) btn.addEventListener('click', () => showView('bulk-results'));
+    if (btn) btn.addEventListener('click', () => {
+        if (window.location.pathname !== '/') {
+            history.pushState({}, '', '/');
+        }
+        showView('bulk-results');
+    });
 }
 
 function setupErrorDismiss() {
     const btn = document.getElementById('btn-dismiss-error');
-    if (btn) btn.addEventListener('click', () => showView('hero'));
+    if (btn) btn.addEventListener('click', () => {
+        if (window.location.pathname !== '/') {
+            history.pushState({}, '', '/');
+        }
+        showView('hero');
+    });
 }
 
 // --- View State Management ---
@@ -269,6 +288,13 @@ function showView(view) {
 // --- Main Lookup ---
 async function runLookup(query, fromBulk = false) {
     navigatedFromBulk = fromBulk;
+    
+    // Update address bar path
+    const path = encodeURIComponent(query);
+    if (window.location.pathname !== `/${path}`) {
+        history.pushState({ query }, '', `/${path}`);
+    }
+
     // Sync main input
     const input = document.getElementById('search-input');
     if (input) input.value = query;
@@ -1006,5 +1032,53 @@ function getScoreColor(score) {
     if (score >= 50) return 'var(--neon-orange)';
     if (score >= 25) return '#fbbf24';
     return 'var(--neon-green)';
+}
+
+function setupRouter() {
+    window.addEventListener('popstate', (e) => {
+        const path = window.location.pathname.substring(1);
+        if (path) {
+            const decoded = decodeURIComponent(path);
+            const detected = detectType(decoded);
+            if (detected) {
+                const input = document.getElementById('search-input');
+                const headerInput = document.getElementById('header-search-input');
+                if (input) input.value = decoded;
+                if (headerInput) headerInput.value = decoded;
+                runLookup(decoded);
+            } else {
+                showView('hero');
+            }
+        } else {
+            const input = document.getElementById('search-input');
+            const headerInput = document.getElementById('header-search-input');
+            if (input) input.value = '';
+            if (headerInput) headerInput.value = '';
+            const badge = document.getElementById('ioc-type-badge');
+            if (badge) {
+                badge.textContent = 'TYPE';
+                badge.className = 'ioc-type-badge';
+            }
+            showView('hero');
+        }
+    });
+
+    // Initial check on page load
+    const path = window.location.pathname.substring(1);
+    if (path) {
+        const decoded = decodeURIComponent(path);
+        const detected = detectType(decoded);
+        if (detected) {
+            const input = document.getElementById('search-input');
+            const headerInput = document.getElementById('header-search-input');
+            if (input) input.value = decoded;
+            if (headerInput) headerInput.value = decoded;
+            
+            // Wait slightly for DOM to settle
+            setTimeout(() => {
+                runLookup(decoded);
+            }, 200);
+        }
+    }
 }
 

@@ -873,9 +873,12 @@ def generate_containment(ioc, ioc_type):
 
 # --- Flask Routes ---
 
-@app.route('/')
-def index():
-    """Serve the main UI."""
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def index(path):
+    """Serve the main UI and support client-side routing catch-all."""
+    if path.startswith('api/') or path.startswith('static/'):
+        return "Not Found", 404
     return render_template('index.html')
 
 
